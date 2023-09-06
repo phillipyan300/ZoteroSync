@@ -8,13 +8,20 @@ import subprocess
 #Maybe add some way to access webpage screenshots too, beyond just PDFs
 #Permanent storage of PDF Dictionary? even after program has stopped running? maybe a text file?
 
-class downloadZoteroAPI:
+class DownloadZoteroAPI:
     def __init__(self, userID: str, api_key: str, directory_name: str):
         self.userID = userID
         self.api_key = api_key
         self.directory_name = directory_name
         self.full_directory_path = os.path.join(os.getcwd(), directory_name)
         self.PDFDictionary = {}
+        response = self.getAPIrequest('https://api.zotero.org/users/12095418/items/Z2RIVWW3')
+        print(json.dumps(response.json(), indent=4))
+        response = self.getAPIrequest('https://api.zotero.org/users/12095418/items/2ZACD4TK')
+        print(json.dumps(response.json(), indent=4))
+
+
+
 
     def makeFolder(self):
         if not os.path.exists(self.full_directory_path):
@@ -87,6 +94,7 @@ class downloadZoteroAPI:
                     f.write(response.content)
                 # Add to dictionary
                 self.PDFDictionary[annotation_parent_key]["annotation_url"] = annotation_url
+                print(item)
 
                 # TODO call another function to clip the annotation on to the parent function, pikepdf?
 
@@ -149,7 +157,7 @@ class downloadZoteroAPI:
 
 
 if __name__ == "__main__":
-    zotero = downloadZoteroAPI(userID = "", api_key = "", directory_name = "")
+    zotero = DownloadZoteroAPI(userID="", api_key="", directory_name="")
     zotero.download()
 
 

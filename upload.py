@@ -12,63 +12,69 @@ class UploadZoteroAPI:
         self.filename = filename
         self.collection = collection
         self.fullDirectoryPath = os.path.join(os.getcwd(), directoryPath)
+        self.headers =  {
+            "Zotero-API-Version": "3",
+            "Zotero-API-Key": self.apiKey
+        }
+        self.collectionKey = self.getCollectionKey()
 
         with open("PDFDictionary.json", "r") as file:
             self.PDFDictionary = json.load(file)
 
-    def uploadHelper(self):
+    def upload(self) -> bool:
+
         #If the file already exists on Zotero
-        if self.getPDFKey() == "0":
+        if self._getPDFKey() == "0":
             print("Uploading a new attachment")
-            self.isNew = True
+            if self._uploadNewItem():
+                return True
+            else:
+                return False
         else:
             print("Updating an existing attachment")
-            self.isNew = False
-        self.upload()
-
-    def upload(self) -> bool:
-        #Getting the collection Key
-        collectionKey = self.getCollectionKey()
-
-        #Step 0: If it is simply updating a new file, delete the old file
-        if not self.isNew:
-            oldPdfKey = self.getPDFKey()
-            attachmentMetadata = self.getAPIrequest(f"https://api.zotero.org/users/{self.userID}/items/{oldPdfKey}").json()
-            oldVersion = attachmentMetadata["data"]["version"]
-            headers = {
-                "Zotero-API-Version": "3",
-                "Zotero-API-Key": self.apiKey,
-                "If-Unmodified-Since-Version": str(oldVersion)
-            }
-            response = requests.delete(f"https://api.zotero.org/users/{self.userID}/items/{oldPdfKey}", headers=headers)
-            if response.status_code == 204:
-                pass
-                #print("Old file successfully deleted!")
+            if self._updateItem():
+                return True
             else:
-                print("Error:", response.text)
+                return False
 
+            
+
+    def _deleteOldFile(self) -> bool:
+        oldPdfKey = self._getPDFKey()
+        attachmentMetadata = self.getAPIrequest(f"https://api.zotero.org/users/{self.userID}/items/{oldPdfKey}").json()
+        oldVersion = attachmentMetadata["data"]["version"]
+        unique_headers = self.headers
+        unique_headers["If-Unmodified-Since-Version"] = oldVersion
+        response = requests.delete(f"https://api.zotero.org/users/{self.userID}/items/{oldPdfKey}", headers=unique_headers)
+        if response.status_code == 204:
+            return True
+        else:
+             return False
+
+    def _fillOutTemplate(self):
         # Step 1: Obtain the Template and edit it
         response = self.getAPIrequest("https://api.zotero.org/items/new?itemType=attachment&linkMode=imported_file")
         structure = response.json()
         structure["title"] = self.filename
         structure["filename"] = self.filename
         structure["contentType"] = "application/pdf"
-        structure["collections"].append(collectionKey)
+        structure["collections"].append(self.collectionKey)
+        return structure
 
-        # Step 2: Sending the filled out template
-        headers = {
-            'Content-Type': 'application/json',
-            "Zotero-API-Version": "3",
-            "Zotero-API-Key": self.apiKey,
-        }
-        response = requests.post(f"https://api.zotero.org/users/{self.userID}/items", json=[structure], headers=headers)
+    def _sendTemplate(self, structure) -> str:
+        unique_headers = self.headers
+        unique_headers["Content-Type"] = "application/json"
+        response = requests.post(f"https://api.zotero.org/users/{self.userID}/items", json=[structure], headers=unique_headers)
         jsonToGetKey = response.json()
         itemKey = jsonToGetKey['successful']['0']['key']
         itemUrl = f"https://api.zotero.org/users/{self.userID}/items/{itemKey}/file/view"
         itemName = self.filename
 
+        # Step 6: Upload the PDF dictionary with the new file. In the case that you are editing an existing file, this should overwrite the old url and key
+        self.addToDictionary(itemKey, itemName, itemUrl)
+        return itemKey
 
-        # Step 3: Upload confirmation and get md5, mtime, and filesize
+    def _uploadCheck(self, itemKey: str):
         mtime = os.path.getmtime(f"{self.directoryPath}{self.filename}") * 1000  # Convert to milliseconds
         md5Hash = hashlib.md5()
         with open(f"{self.directoryPath}{self.filename}", "rb") as file:
@@ -76,31 +82,28 @@ class UploadZoteroAPI:
                 md5Hash.update(byte_block)
         md5 = md5Hash.hexdigest()
         filesize = os.path.getsize(f"{self.directoryPath}{self.filename}")
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Zotero-API-Version": "3",
-            "Zotero-API-Key": self.apiKey,
-            "If-None-Match": "*"
-        }
+        unique_headers = self.headers
+        unique_headers["If-None-Match"] = "*"
+        unique_headers["Content-Type"] = "application/x-www-form-urlencoded"
         data = {
             "md5": md5,
             "filename": self.filename,
             "filesize": filesize,
             "mtime": mtime
         }
-        response = requests.post(f"https://api.zotero.org/users/{self.userID}/items/{itemKey}/file", data=data, headers=headers)
+        response = requests.post(f"https://api.zotero.org/users/{self.userID}/items/{itemKey}/file", data=data,
+                                 headers=unique_headers)
 
-        #If there's no change to the file, we can exit the program
-        if response.text == "{\"exists\":1}":
+        # If there's no change to the file, we can exit the program
+        if ("exists" in response.text.keys()) and (response.text["exists"] == 1):
             print("The file already exists in Zotero as its current version. No changes are necessary")
-            return True
+            return False
+        return response.json()
 
-        # Step 4: Uploading the file
-        headers = {
-            "Content-Type": response.json()['contentType'],  # API response from step 3 needs to not say exists or this will break
-            "Zotero-API-Version": "3",
-            "Zotero-API-Key": self.apiKey
-        }
+
+    def _fileUpload(self, response, itemKey: str) -> bool:
+        unique_headers = self.headers
+        unique_headers["Content-Type"] = response.json()['contentType']
         # Concatenate prefix, file content, and suffix
         with open(f"{self.directoryPath}{self.filename}", "rb") as file:
             fileContent = file.read()
@@ -110,39 +113,48 @@ class UploadZoteroAPI:
         # Now concatenate
         payload = prefixBytes + fileContent + suffixBytes
         # Upload the file
-        uploadResponse = requests.post(response.json()['url'], data=payload, headers=headers)
+        uploadResponse = requests.post(response.json()['url'], data=payload, headers=unique_headers)
 
-
-        #Step 5: If the upload is successful, register the upload
+        # Step 5: If the upload is successful, register the upload
         if uploadResponse.status_code == 201:
             print("File successfully uploaded")
-
-            registerHeaders = {
-                # Because the content to be sent is not application/json, you use data, the generic way to send post data
-                "Content-Type": "application/x-www-form-urlencoded",
-                "If-None-Match": "*",
-                "Zotero-API-Version": "3",
-                "Zotero-API-Key": self.apiKey
-            }
-
-            registerData = {
-                "upload": response.json()['uploadKey']
-            }
-
-            registerResponse = requests.post(
-                f"https://api.zotero.org/users/{self.userID}/items/{itemKey}/file",
-                data=registerData, headers=registerHeaders)
+            unique_headers = self.headers
+            unique_headers["Content-Type"] = "application/x-www-form-urlencoded"
+            unique_headers["If-None-Match"] = "*"
+            registerData = {"upload": response.json()['uploadKey']}
+            registerResponse = requests.post( f"https://api.zotero.org/users/{self.userID}/items/{itemKey}/file", data=registerData, headers=unique_headers)
             if registerResponse.status_code == 204:
                 print("Upload successfully registered")
+                return True
             else:
                 print("Error registering upload:", registerResponse.text)
+                return False
         else:
             print("Error uploading file:", uploadResponse.text)
+            return False
 
-        #Step 6: Upload the PDF dictionary with the new file. In the case that you are editing an existing file, this should overwrite the old url and key
-        self.addToDictionary(itemKey, itemName, itemUrl)
+    #False returns means there is an error
+    def _updateItem(self) -> bool:
+        #Deleting the original item
+        self._deleteOldFile()
+        structure = self._fillOutTemplate()
+        key = self._sendTemplate(structure)
+        postInformation = self._uploadCheck(key)
+        if postInformation == False:
+            return False
+        self._fileUpload(postInformation, key)
 
 
+
+    def _uploadNewItem(self) -> bool:
+        structure = self._fillOutTemplate()
+        key = self._sendTemplate(structure)
+        if not self._uploadCheck(key):
+            return False
+        postInformation = self._uploadCheck(key)
+        if postInformation == False:
+            return False
+        self._fileUpload(postInformation, key)
 
     def addToDictionary(self, itemKey: str, itemName: str, itemUrl: str) -> None:
         #If it already exists, we have to delete the element and add a new one
@@ -182,13 +194,10 @@ class UploadZoteroAPI:
             print("Error retrieving collections:", response.text)
             exit()
 
-    def getPDFKey(self) -> str:
-        headers = {
-            "Zotero-API-Version": "3",
-            "Zotero-API-Key": self.apiKey
-        }
+    def _getPDFKey(self) -> str:
+
         # Get all collections and search for the one that I need
-        response = requests.get(f"https://api.zotero.org/users/{self.userID}/items", headers=headers)
+        response = requests.get(f"https://api.zotero.org/users/{self.userID}/items", headers=self.headers)
 
         if response.status_code == 200:
             items = response.json()
@@ -228,7 +237,6 @@ if __name__ == "__main__":
     zotero = UploadZoteroAPI(userID="", apiKey="",
                              directoryPath="", filename="",
                              collection="")
-    zotero.uploadHelper()
 
 
 
