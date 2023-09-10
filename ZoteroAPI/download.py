@@ -135,7 +135,7 @@ class DownloadZoteroAPI:
             return False
 
     def savePDFLibraryDict(self):
-        with open("PDFDictionary.json", "w") as file:
+        with open("../PDFDictionary.json", "w") as file:
             json.dump(self.PDFDictionary, file)
 
     def download(self):
@@ -149,7 +149,7 @@ class DownloadZoteroAPI:
     #Data persistence for uploads
 
     def clearPDFLibraryDict(self):
-        with open("PDFDictionary.json", "w") as file:
+        with open("../PDFDictionary.json", "w") as file:
             pass
 
 #Single download class. For use when there are incremental updates to the Zotero repository and you don't want to download the whole repository
@@ -260,7 +260,7 @@ class SingleDownloadZoteroAPI:
 
     #Appending rather than writing.
     def _savePDFLibraryDict(self):
-        with open("PDFDictionary.json", "a") as file:
+        with open("../PDFDictionary.json", "a") as file:
             pass
     def download(self):
         if not self._extract():

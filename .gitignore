@@ -5,3 +5,7 @@
 __pycache__/
 
 *.pyc
+
+PDFDictionary.json
+
+ZoteroImports

@@ -41,7 +41,7 @@ class MultipleUploadZoteroAPI:
             }
             self.collectionKey = self._getCollectionKey()
 
-            with open("PDFDictionary.json", "r") as file:
+            with open("../PDFDictionary.json", "r") as file:
                 self.PDFDictionary = json.load(file)
 
         def upload(self) -> bool:
@@ -199,7 +199,7 @@ class MultipleUploadZoteroAPI:
                 del self.PDFDictionary[keyToDelete]
             self.PDFDictionary[itemKey] = {"pdf_name": itemName, "pdf_url": itemUrl}
             #Overwrite the previous document
-            with open("PDFDictionary.json", "w") as file:
+            with open("../PDFDictionary.json", "w") as file:
                 json.dump(self.PDFDictionary, file)
             print("Successfully updated local PDFDictionary log of new attachments")
 
