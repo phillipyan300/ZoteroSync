@@ -3,47 +3,45 @@ import json
 import os
 import subprocess
 
-#How to stop it from accessing trash
-#TODO: When the user specifies a specific directory, wll need to change the os.path.join
-#Maybe add some way to access webpage screenshots too, beyond just PDFs
-#Permanent storage of PDF Dictionary? even after program has stopped running? maybe a text file?
 
+
+#Initial download. Downloads all of the files of the server
 class DownloadZoteroAPI:
-    def __init__(self, userID: str, api_key: str, directory_name: str):
+    def __init__(self, userID: str, apiKey: str, directoryName: str):
         self.userID = userID
-        self.api_key = api_key
-        self.directory_name = directory_name
-        self.full_directory_path = os.path.join(os.getcwd(), directory_name)
+        self.apiKey = apiKey
+        self.directoryName = directoryName
+        self.fullDirectoryPath = os.path.join(os.getcwd(), directoryName)
         self.PDFDictionary = {}
-        response = self.getAPIrequest('https://api.zotero.org/users/12095418/items/Z2RIVWW3')
+        response = self._getAPIrequest('https://api.zotero.org/users/12095418/items/Z2RIVWW3')
         print(json.dumps(response.json(), indent=4))
-        response = self.getAPIrequest('https://api.zotero.org/users/12095418/items/2ZACD4TK')
+        response = self._getAPIrequest('https://api.zotero.org/users/12095418/items/2ZACD4TK')
         print(json.dumps(response.json(), indent=4))
 
 
 
 
     def makeFolder(self):
-        if not os.path.exists(self.full_directory_path):
-            os.mkdir(self.directory_name)
+        if not os.path.exists(self.fullDirectoryPath):
+            os.mkdir(self.directoryName)
 
     # Multiple API calls needed because limit on number of files per API call
     def extract(self):
         start = 0
         itemsLeft = True
         while itemsLeft:
-            itemsLeft = self.getPDFS(start)
+            itemsLeft = self._getPDFS(start)
             start += 25
 
         # Annotations
         start = 0
         itemsLeft = True
         while itemsLeft:
-            itemsLeft = self.getAnnotations(start)
+            itemsLeft = self._getAnnotations(start)
             start += 25
 
-    def getPDFS(self, start: int) -> bool:
-        response = self.getAPIrequest(f"https://api.zotero.org/users/{self.userID}/items?limit=25&start={start}")
+    def _getPDFS(self, start: int) -> bool:
+        response = self._getAPIrequest(f"https://api.zotero.org/users/{self.userID}/items?limit=25&start={start}")
 
         items = response.json()
 
@@ -57,23 +55,23 @@ class DownloadZoteroAPI:
         for item in items:
             # Attachments
             if item["data"]["itemType"] == "attachment":
-                pdf_name = item["data"]["title"]
-                print(f"Exporting PDF: {pdf_name}")
-                pdf_key = item["data"]["key"]
-                pdf_url = f"https://api.zotero.org/users/{self.userID}/items/{item['data']['key']}/file/view"
+                pdfName = item["data"]["title"]
+                print(f"Exporting PDF: {pdfName}")
+                pdfKey = item["data"]["key"]
+                pdfUrl = f"https://api.zotero.org/users/{self.userID}/items/{item['data']['key']}/file/view"
                 # Get the PDF and store it in the drive
-                response = self.getAPIrequest(pdf_url)
-                file_path = os.path.join(self.full_directory_path, pdf_name)
+                response = self._getAPIrequest(pdfUrl)
+                file_path = os.path.join(self.fullDirectoryPath, pdfName)
                 with open(file_path, "wb") as f:
                     f.write(response.content)
 
                 # Add to the dictionary of pdfs
-                self.PDFDictionary[pdf_key] = {"pdf_name": pdf_name, "pdf_url": pdf_url}
+                self.PDFDictionary[pdfKey] = {"pdf_name": pdfName, "pdf_url": pdfUrl}
         return True
 
     # Helper Method for extract
-    def getAnnotations(self, start: int) -> bool:
-        response = self.getAPIrequest(f"https://api.zotero.org/users/{self.userID}/items?limit=25&start={start}")
+    def _getAnnotations(self, start: int) -> bool:
+        response = self._getAPIrequest(f"https://api.zotero.org/users/{self.userID}/items?limit=25&start={start}")
 
         items = response.json()
         if not len(items):
@@ -82,27 +80,26 @@ class DownloadZoteroAPI:
         for item in items:
             # Annotations
             if item["data"]["itemType"] == "annotation":
-                annotation_title = item["key"]
-                print(f"Exporting annotation: {annotation_title}")
-                annotation_url = item["links"]["self"]["href"]
-                annotation_parent_key = item["data"]["parentItem"]
+                annotationTitle = item["key"]
+                print(f"Exporting annotation: {annotationTitle}")
+                annotationUrl = item["links"]["self"]["href"]
+                annotationParentKey = item["data"]["parentItem"]
 
                 # Get Annotation and store in local repo
-                response = self.getAPIrequest(annotation_url)
-                file_path = os.path.join(self.full_directory_path, annotation_title)
-                with open(file_path, "wb") as f:
+                response = self._getAPIrequest(annotationUrl)
+                filePath = os.path.join(self.fullDirectoryPath, annotationTitle)
+                with open(filePath, "wb") as f:
                     f.write(response.content)
                 # Add to dictionary
-                self.PDFDictionary[annotation_parent_key]["annotation_url"] = annotation_url
+                self.PDFDictionary[annotationParentKey]["annotation_url"] = annotationUrl
                 print(item)
 
-                # TODO call another function to clip the annotation on to the parent function, pikepdf?
 
     # Generic API get function, with generic error checking
-    def getAPIrequest(self, link: str) -> requests.models.Response:
+    def _getAPIrequest(self, link: str) -> requests.models.Response:
         headers = {
             "Zotero-API-Version": "3",
-            "Zotero-API-Key": self.api_key,
+            "Zotero-API-Key": self.apiKey,
 
         }
         try:
@@ -134,7 +131,7 @@ class DownloadZoteroAPI:
         else:
             for key, value in self.PDFDictionary.items():
                 if value["Order"] == (fileno + 1):
-                    subprocess.run(["open", f"{self.directory_name}/{self.PDFDictionary[key]['pdf_name']}"])
+                    subprocess.run(["open", f"{self.directoryName}/{self.PDFDictionary[key]['pdf_name']}"])
             return False
 
     def savePDFLibraryDict(self):
@@ -155,10 +152,129 @@ class DownloadZoteroAPI:
         with open("PDFDictionary.json", "w") as file:
             pass
 
+#Single download class. For use when there are incremental updates to the Zotero repository and you don't want to download the whole repository
+#Main concern is that the only way you can search for new files on Zotero is by pdfname, as you won't know the itemkey/pdfkey.
+class SingleDownloadZoteroAPI:
+    #TODO  check for duplicates; give priority to the most recent zotero
+    def __init__(self, userID: str, apiKey: str, directoryName: str, filename: str):
+        self.userID = userID
+        self.apiKey = apiKey
+        self.directoryName = directoryName
+        self.fullDirectoryPath = os.path.join(os.getcwd(), directoryName)
+        self.fileName = filename
+        self.PDFDictionary = {}
 
+    def _extract(self) -> bool:
+        start = 0
+        itemsLeft = "0"
+        while itemsLeft == "0":
+            itemsLeft = self._getPDFS(start)
+            start += 25
+
+        if itemsLeft == "itemNotFound":
+            return False
+        else:
+            pdfKey = itemsLeft
+
+        start = 0
+        itemsLeft = True
+        while itemsLeft:
+            itemsLeft = self._getAnnotations(start, pdfKey)
+            start += 25
+        return True
+
+    #Returns the key of the item if found, "0" if not found in the 25 files, and  "itemNotFound" if it has searched all files and not found it
+    def _getPDFS(self, start: int) -> str:
+        response = self._getAPIrequest(f"https://api.zotero.org/users/{self.userID}/items?limit=25&start={start}")
+
+        items = response.json()
+
+        # If there are no more items, return false.
+        if not len(items):
+            return "itemNotFound"
+
+        # Each item is an item in Zotero represented as a dictionary. Beware of duplicates, a single file will have both a journal article (containing metadata, a sort of wrapper) and a pdf
+        for item in items:
+            # Attachments
+            if item["data"]["itemType"] == "attachment":
+                pdfName = item["data"]["title"]
+                if pdfName == self.fileName:
+                    pdfKey = item["data"]["key"]
+                    pdfUrl = f"https://api.zotero.org/users/{self.userID}/items/{item['data']['key']}/file/view"
+                    self.PDFDictionary[pdfKey] = {"pdf_name": pdfName, "pdf_url": pdfUrl}
+                    print(f"Exporting PDF: {pdfName}")
+
+                    # Get the PDF and store it in the local folder
+                    response = self._getAPIrequest(pdfUrl)
+                    filePath = os.path.join(self.fullDirectoryPath, pdfName)
+                    with open(filePath, "wb") as f:
+                        f.write(response.content)
+                    self.PDFDictionary[pdfKey] = {"pdf_name": pdfName, "pdf_url": pdfUrl}
+                    return pdfKey
+        return "0"
+
+    #This gets any annotations related to the pdf in question.
+    def _getAnnotations(self, start: int, pdfKey: str) -> bool:
+        response = self._getAPIrequest(f"https://api.zotero.org/users/{self.userID}/items?limit=25&start={start}")
+
+        items = response.json()
+        if not len(items):
+            return False
+
+        for item in items:
+            # Annotations
+            if item["data"]["itemType"] == "annotation":
+                annotationParentKey = item["data"]["parentItem"]
+                if annotationParentKey == pdfKey:
+                    annotationTitle = item["key"]
+                    annotationUrl = item["links"]["self"]["href"]
+                    print(f"Exporting annotation: {annotationTitle}")
+
+                    # Get Annotation and store in local repo
+                    response = self._getAPIrequest(annotationUrl)
+                    filePath = os.path.join(self.fullDirectoryPath, annotationTitle)
+                    with open(filePath, "wb") as f:
+                        f.write(response.content)
+
+                    self.PDFDictionary[annotationParentKey]["annotation_url"] = annotationUrl
+                    #Although the annotation is found, this should stop the loop in extract to save runtime
+                    return False
+        return True
+
+
+    def _getAPIrequest(self, link: str) -> requests.models.Response:
+        headers = {
+            "Zotero-API-Version": "3",
+            "Zotero-API-Key": self.apiKey,
+
+        }
+        try:
+            response = requests.get(link, headers=headers)
+            if response.status_code == 200:
+                return response
+            else:
+                print(f"API call failed. Status code: {response.status_code}. ")
+                exit()
+        except Exception as e:
+            print(f"API request error: {e}")
+
+    #Appending rather than writing.
+    def _savePDFLibraryDict(self):
+        with open("PDFDictionary.json", "a") as file:
+            pass
+    def download(self):
+        if not self._extract():
+            print("Item not Found!")
+            exit()
+        self._savePDFLibraryDict()
 if __name__ == "__main__":
-    zotero = DownloadZoteroAPI(userID="", api_key="", directory_name="")
-    zotero.download()
+    #This is for downloading the entire repository
+    zotero1 = DownloadZoteroAPI(userID = "", apiKey = "", directoryName = "")
+    zotero1.download()
+
+    #This is for a single item download
+    zotero2 = SingleDownloadZoteroAPI(userID="", apiKey="", directoryName="", filename="")
+    zotero2.download()
 
 
 
