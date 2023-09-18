@@ -13,10 +13,6 @@ class DownloadZoteroAPI:
         self.directoryName = directoryName
         self.fullDirectoryPath = os.path.join(os.getcwd(), directoryName)
         self.PDFDictionary = {}
-        response = self._getAPIrequest('https://api.zotero.org/users/12095418/items/Z2RIVWW3')
-        print(json.dumps(response.json(), indent=4))
-        response = self._getAPIrequest('https://api.zotero.org/users/12095418/items/2ZACD4TK')
-        print(json.dumps(response.json(), indent=4))
 
 
 

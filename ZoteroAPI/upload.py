@@ -40,19 +40,38 @@ class MultipleUploadZoteroAPI:
                 "Zotero-API-Key": self.apiKey
             }
             self.collectionKey = self._getCollectionKey()
+            self.PDFDictionary = {}
 
-            with open("../PDFDictionary.json", "r") as file:
-                self.PDFDictionary = json.load(file)
+        def loadFile(self) -> bool:
+            try:
+                with open("../PDFDictionary.json", "r") as file:
+                    self.PDFDictionary = json.load(file)
+                    return True
+            except FileNotFoundError:
+                print("The file was not found.")
+                self.PDFDictionary = {}
+                return False
+            except json.JSONDecodeError:
+                print("The file does not contain valid JSON.")
+                self.PDFDictionary = {}
+                return False
 
+        '''Bifurcates control flow to two different methods based on whether it is a new item or an item to be updated
+        @returns true if the operation was a success, false if there was some error encountered
+        
+        '''
         def upload(self) -> bool:
-
-            #If the file already exists on Zotero
-            if self._getPDFKey() == None:
+            #If there is a loading issue
+            if not self.loadFile():
+                return False
+            # If the file is new
+            if self._searchForPdfKeyInUserLibrary() == None:
                 print("Uploading a new attachment")
                 if self._uploadNewItem():
                     return True
                 else:
                     return False
+            #If the file already exists on Zotero
             else:
                 print("Updating an existing attachment")
                 if self._updateItem():
@@ -63,7 +82,7 @@ class MultipleUploadZoteroAPI:
 
 
         def _deleteOldFile(self) -> bool:
-            oldPdfKey = self._getPDFKey()
+            oldPdfKey = self._searchForPdfKeyInUserLibrary()
             attachmentMetadata = self._getAPIrequest(f"https://api.zotero.org/users/{self.userID}/items/{oldPdfKey}").json()
             oldVersion = attachmentMetadata["data"]["version"]
             uniqueHeaders = self.headers
@@ -74,7 +93,7 @@ class MultipleUploadZoteroAPI:
             else:
                  return False
 
-        def _fillOutTemplate(self):
+        def _getZoteroDocumentTemplate(self):
             # Step 1: Obtain the Template and edit it
             response = self._getAPIrequest("https://api.zotero.org/items/new?itemType=attachment&linkMode=imported_file")
             structure = response.json()
@@ -172,15 +191,16 @@ class MultipleUploadZoteroAPI:
         def _updateItem(self) -> bool:
             #Deleting the original item
             self._deleteOldFile()
-            structure = self._fillOutTemplate()
+            structure = self._getZoteroDocumentTemplate()
             key = self._sendTemplate(structure)
             postInformation = self._uploadCheck(key)
             if postInformation == False:
                 return False
             self._fileUpload(postInformation, key)
+            return True
 
         def _uploadNewItem(self) -> bool:
-            structure = self._fillOutTemplate()
+            structure = self._getZoteroDocumentTemplate()
             key = self._sendTemplate(structure)
             if not self._uploadCheck(key):
                 return False
@@ -188,6 +208,7 @@ class MultipleUploadZoteroAPI:
             if postInformation == False:
                 return False
             self._fileUpload(postInformation, key)
+            return True
 
         def _addToDictionary(self, itemKey: str, itemName: str, itemUrl: str) -> None:
             #If it already exists, we have to delete the element and add a new one
@@ -227,7 +248,7 @@ class MultipleUploadZoteroAPI:
                 print("Error retrieving collections:", response.text)
                 exit()
 
-        def _getPDFKey(self) -> Optional[str]:
+        def _searchForPdfKeyInUserLibrary(self) -> Optional[str]:
 
              # Search for the attachment that I need from Zotero's repository
             MAX_ITERATIONS = 100  # Example maximum number of iterations to prevent infinite loops
